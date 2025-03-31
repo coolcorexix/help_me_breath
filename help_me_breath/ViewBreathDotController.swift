@@ -1,40 +1,7 @@
 import SwiftUI
 import Cocoa
 import Foundation
-
-// Enum to represent different breathing modes
-enum BreathingMode: String, CaseIterable {
-    case casualWork = "Casual Work"
-    case deepFocus = "Deep Focus"
-}
-
-// Struct to hold timing configuration for a breathing pattern
-struct BreathingPattern {
-    var inhaleSeconds: Double
-    var inhaleHoldSeconds: Double
-    var exhaleSeconds: Double
-    var exhaleHoldSeconds: Double
-    
-    // Total duration of one complete breath cycle
-    var totalCycleDuration: Double {
-        inhaleSeconds + inhaleHoldSeconds + exhaleSeconds + exhaleHoldSeconds
-    }
-    
-    // Predefined templates
-    static let casualWorkPattern = BreathingPattern(
-        inhaleSeconds: 5,
-        inhaleHoldSeconds: 0,
-        exhaleSeconds: 5,
-        exhaleHoldSeconds: 0
-    )
-    
-    static let deepFocusPattern = BreathingPattern(
-        inhaleSeconds: 4,
-        inhaleHoldSeconds: 4,
-        exhaleSeconds: 4,
-        exhaleHoldSeconds: 4
-    )
-}
+import Combine
 
 // Main configuration class that will be shared across the app
 class BreathingConfiguration: ObservableObject {
@@ -84,29 +51,6 @@ class BreathingConfiguration: ObservableObject {
         Hold: \(exhaleHoldTime)s
         Total cycle: \(currentPattern.totalCycleDuration)s
         """
-    }
-}
-
-// Extension to add custom patterns
-extension BreathingConfiguration {
-    // Method to create a custom pattern
-    static func createCustomPattern(
-        inhale: Double,
-        inhaleHold: Double,
-        exhale: Double,
-        exhaleHold: Double
-    ) -> BreathingPattern {
-        BreathingPattern(
-            inhaleSeconds: inhale,
-            inhaleHoldSeconds: inhaleHold,
-            exhaleSeconds: exhale,
-            exhaleHoldSeconds: exhaleHold
-        )
-    }
-    
-    // Method to apply a predefined template
-    func applyTemplate(_ mode: BreathingMode) {
-        switchMode(to: mode)
     }
 }
 
@@ -255,7 +199,6 @@ class ViewBreathDotController: NSViewController {
 // Simple water level animation view
 struct WaterLevelView: View {
     @StateObject private var breathingState = BreathingState()
-    @StateObject private var breathingConfig = BreathingConfiguration.shared
     
     var waterColor: Color {
         switch breathingState.currentPhase {
@@ -284,11 +227,32 @@ class BreathingState: ObservableObject {
     @Published var waterLevel: CGFloat = 0.2
     @Published var currentPhase: BreathingPhase = .inhale
     private var timer: Timer?
+    private let breathingConfig: BreathingConfiguration
     private var phaseStartTime: Date?
-    private let breathingConfig = BreathingConfiguration.shared
+    private var cancellables = Set<AnyCancellable>()
     
     enum BreathingPhase: Equatable {
         case inhale, inhaleHold, exhale, exhaleHold
+    }
+    
+    init() {
+        self.breathingConfig = BreathingConfiguration.shared
+        setupConfigObserver()
+    }
+    
+    private func setupConfigObserver() {
+        breathingConfig.$currentMode
+            .sink { [weak self] _ in
+                self?.restartBreathingCycle()
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func restartBreathingCycle() {
+        currentPhase = .inhale
+        waterLevel = 0.2
+        phaseStartTime = nil
+        startBreathingCycle()
     }
     
     func startBreathingCycle() {
@@ -305,36 +269,36 @@ class BreathingState: ObservableObject {
             return
         }
         
-        let pattern = breathingConfig.currentPattern
+        let config = breathingConfig.currentPattern
         let elapsedTime = Date().timeIntervalSince(startTime)
         
         switch currentPhase {
         case .inhale:
-            let progress = min(elapsedTime / pattern.inhaleSeconds, 1.0)
-            waterLevel = 0.2 + (0.6 * progress) // Scale from 0.2 to 0.8
+            let progress = min(elapsedTime / config.inhaleSeconds, 1.0)
+            waterLevel = 0.2 + (0.6 * CGFloat(progress))
             
             if progress >= 1.0 {
-                currentPhase = pattern.inhaleHoldSeconds > 0 ? .inhaleHold : .exhale
+                currentPhase = config.inhaleHoldSeconds > 0 ? .inhaleHold : .exhale
                 phaseStartTime = Date()
             }
             
         case .inhaleHold:
-            if elapsedTime >= pattern.inhaleHoldSeconds {
+            if elapsedTime >= config.inhaleHoldSeconds {
                 currentPhase = .exhale
                 phaseStartTime = Date()
             }
             
         case .exhale:
-            let progress = min(elapsedTime / pattern.exhaleSeconds, 1.0)
-            waterLevel = 0.8 - (0.6 * progress) // Scale from 0.8 to 0.2
+            let progress = min(elapsedTime / config.exhaleSeconds, 1.0)
+            waterLevel = 0.8 - (0.6 * CGFloat(progress))
             
             if progress >= 1.0 {
-                currentPhase = pattern.exhaleHoldSeconds > 0 ? .exhaleHold : .inhale
+                currentPhase = config.exhaleHoldSeconds > 0 ? .exhaleHold : .inhale
                 phaseStartTime = Date()
             }
             
         case .exhaleHold:
-            if elapsedTime >= pattern.exhaleHoldSeconds {
+            if elapsedTime >= config.exhaleHoldSeconds {
                 currentPhase = .inhale
                 phaseStartTime = Date()
             }
@@ -343,5 +307,6 @@ class BreathingState: ObservableObject {
     
     deinit {
         timer?.invalidate()
+        cancellables.removeAll()
     }
 } 

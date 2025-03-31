@@ -2,7 +2,7 @@ import SwiftUI
 import Cocoa
 
 // State object to manage breathing state
-class BreathingState: ObservableObject {
+class BreathingStateForBreathInput: ObservableObject {
     @Published var isInhaling = false
     @Published var inhalationStartTime: Date?
     @Published var columnHeight: CGFloat = 0
@@ -46,7 +46,7 @@ class BreathingState: ObservableObject {
 
 class ViewBreathInputController: NSViewController, NSWindowDelegate {
     var inputWindow: NSWindow?
-    private let breathingState = BreathingState()
+    private let breathingState = BreathingStateForBreathInput()
     private var keyMonitor: Any?
     private var animationTimer: Timer?
     
@@ -56,7 +56,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
     
     // Move the view to its own struct to properly handle state
     struct BreathInputView: View {
-        @ObservedObject var breathingState: BreathingState
+        @ObservedObject var breathingState: BreathingStateForBreathInput
         
         var body: some View {
             ZStack {
