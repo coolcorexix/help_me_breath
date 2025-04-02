@@ -1,13 +1,13 @@
 import Foundation
 
 // Enum to represent different breathing modes
-enum BreathingMode: String, CaseIterable {
+public enum BreathingMode: String, CaseIterable {
     case casualWork = "Casual Work"
     case deepFocus = "Deep Focus"
 }
 
 // Struct to hold timing configuration for a breathing pattern
-struct BreathingPattern {
+public struct BreathingPattern {
     var inhaleSeconds: Double
     var inhaleHoldSeconds: Double
     var exhaleSeconds: Double
@@ -34,11 +34,31 @@ struct BreathingPattern {
     )
 }
 
+public class BreathingConfiguration: ObservableObject {
+    @Published public var currentMode: BreathingMode = .casualWork
+    
+    private var patterns: [BreathingMode: BreathingPattern] = [
+        .casualWork: .casualWorkPattern,
+        .deepFocus: .deepFocusPattern
+    ]
+    
+    public var currentPattern: BreathingPattern {
+        patterns[currentMode] ?? .casualWorkPattern
+    }
+    
+    public static let shared = BreathingConfiguration()
+    
+    private init() {}
+    
+    public func switchMode(to mode: BreathingMode) {
+        currentMode = mode
+    }
+}
 
 // Extension to add custom patterns
 extension BreathingConfiguration {
     // Method to create a custom pattern
-    static func createCustomPattern(
+    public static func createCustomPattern(
         inhale: Double,
         inhaleHold: Double,
         exhale: Double,
@@ -53,7 +73,7 @@ extension BreathingConfiguration {
     }
     
     // Method to apply a predefined template
-    func applyTemplate(_ mode: BreathingMode) {
+    public func applyTemplate(_ mode: BreathingMode) {
         switchMode(to: mode)
     }
 } 

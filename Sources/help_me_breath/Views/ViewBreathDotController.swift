@@ -3,57 +3,6 @@ import Cocoa
 import Foundation
 import Combine
 
-// Main configuration class that will be shared across the app
-class BreathingConfiguration: ObservableObject {
-    // Current selected mode
-    @Published var currentMode: BreathingMode = .casualWork
-    
-    // Patterns for each mode using predefined templates
-    private let patterns: [BreathingMode: BreathingPattern] = [
-        .casualWork: .casualWorkPattern,
-        .deepFocus: .deepFocusPattern
-    ]
-    
-    // Current pattern based on selected mode
-    var currentPattern: BreathingPattern {
-        patterns[currentMode] ?? .casualWorkPattern
-    }
-    
-    // Convenience getters for current timings
-    var inhaleTime: Double { currentPattern.inhaleSeconds }
-    var inhaleHoldTime: Double { currentPattern.inhaleHoldSeconds }
-    var exhaleTime: Double { currentPattern.exhaleSeconds }
-    var exhaleHoldTime: Double { currentPattern.exhaleHoldSeconds }
-    
-    // Singleton instance for shared access
-    static let shared = BreathingConfiguration()
-    
-    private init() {}
-    
-    // Method to switch breathing mode
-    func switchMode(to mode: BreathingMode) {
-        currentMode = mode
-        print("Switched to \(mode.rawValue) mode:")
-        print("- Inhale: \(inhaleTime)s")
-        print("- Hold: \(inhaleHoldTime)s")
-        print("- Exhale: \(exhaleTime)s")
-        print("- Hold: \(exhaleHoldTime)s")
-        print("Total cycle: \(currentPattern.totalCycleDuration)s")
-    }
-    
-    // Method to get a description of the current pattern
-    func getCurrentPatternDescription() -> String {
-        """
-        Mode: \(currentMode.rawValue)
-        Inhale: \(inhaleTime)s
-        Hold: \(inhaleHoldTime)s
-        Exhale: \(exhaleTime)s
-        Hold: \(exhaleHoldTime)s
-        Total cycle: \(currentPattern.totalCycleDuration)s
-        """
-    }
-}
-
 class ViewBreathDotController: NSViewController {
     var circleWindow: NSWindow?
     var mouseMonitor: Any?

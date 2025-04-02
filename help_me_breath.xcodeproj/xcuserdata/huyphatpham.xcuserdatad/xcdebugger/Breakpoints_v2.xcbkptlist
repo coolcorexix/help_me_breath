@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "114"
             endingLineNumber = "114"
-            landmarkName = "setupMouseMonitoring()"
+            landmarkName = "setupCircleWindow()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

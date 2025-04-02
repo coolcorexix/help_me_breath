@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:help_me_breath}",
+            "name": "Debug help_me_breath",
+            "program": "${workspaceFolder:help_me_breath}/.build/debug/help_me_breath",
+            "preLaunchTask": "swift: Build Debug help_me_breath"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:help_me_breath}",
+            "name": "Release help_me_breath",
+            "program": "${workspaceFolder:help_me_breath}/.build/release/help_me_breath",
+            "preLaunchTask": "swift: Build Release help_me_breath"
+        }
+    ]
+}
