@@ -3,20 +3,20 @@ import Cocoa
 import Foundation
 import Combine
 
+// View model to manage breathing dot state and interactions
+class BreathingDotState: ObservableObject {
+    @Published var isHovered = false
+    let animationState = BreathingState()
+}
+
 class ViewBreathDotController: NSViewController {
     var circleWindow: NSWindow?
-    var mouseMonitor: Any?
-    var isHovered = false {
-        didSet {
-            if oldValue != isHovered {
-                print("Hover state changed to: \(isHovered)")
-                updateView()
-            }
-        }
-    }
+    private var windowManager: WindowManager?
+    private var mouseTracker: Any?
+    private let breathingDotState: BreathingDotState = BreathingDotState()
     
     // Dynamic circle size
-    var circleSize: CGFloat = 50 {
+    var dotSize: CGFloat = 50 {
         didSet {
             updateWindowSize()
         }
@@ -24,40 +24,31 @@ class ViewBreathDotController: NSViewController {
     
     var isExpanded = false
     
-    var breathDotView: some View {
-        ZStack {
-            // Base circle
-            Circle()
-                .frame(width: circleSize, height: circleSize)
-                .foregroundColor(.black)
-            
-            // Water animation
-            WaterLevelView()
-                .frame(width: circleSize, height: circleSize)
-                .clipShape(Circle())
-        }
-        .opacity(isHovered ? 1.0 : 0.7)
+    var breathingDotView: some View {
+        BreathingDotView(state: breathingDotState, size: dotSize)
     }
     
     override func loadView() {
-        self.view = NSHostingView(rootView: breathDotView)
+        self.view = NSHostingView(rootView: breathingDotView)
     }
     
     override func viewDidLoad() {
         super.viewDidLoad()
         setupCircleWindow()
-        setupMouseMonitoring()
+        setupMouseTracking()
     }
     
     deinit {
-        if let monitor = mouseMonitor {
-            NSEvent.removeMonitor(monitor)
+        if let tracker = mouseTracker {
+            NSEvent.removeMonitor(tracker)
         }
+        windowManager?.cleanup()
+        windowManager = nil
     }
     
-    func setupMouseMonitoring() {
+    func setupMouseTracking() {
         // Use a global mouse movement monitor instead of tracking area
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+        mouseTracker = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             guard let self = self, let window = self.circleWindow else { return }
             
             // Convert mouse location to window coordinates
@@ -68,38 +59,22 @@ class ViewBreathDotController: NSViewController {
             let isInside = NSPointInRect(mouseLocation, windowFrame)
             
             // Update hover state if needed
-            if self.isHovered != isInside {
-                self.isHovered = isInside
+            if self.breathingDotState.isHovered != isInside {
+                self.breathingDotState.isHovered = isInside
             }
-        }
-    }
-    
-    // Update the view with current hover state
-    private func updateView() {
-        // Force refresh by recreating the SwiftUI view
-        DispatchQueue.main.async {
-            let newView = NSHostingView(rootView: self.breathDotView)
-            
-            // Update both the view controller's view and the window content view
-            self.view = newView
-            self.circleWindow?.contentView = newView
         }
     }
     
     func setupCircleWindow() {
         // Make window size match the circle size
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: circleSize, height: circleSize),
-            styleMask: [.borderless], // Keep it truly borderless
+            contentRect: NSRect(x: 0, y: 0, width: dotSize, height: dotSize),
+            styleMask: [.borderless, .titled],
             backing: .buffered,
             defer: false
         )
         
-        window.backgroundColor = NSColor.clear
-        window.isOpaque = false
-        window.hasShadow = false
-        window.level = NSWindow.Level.floating
-        window.contentView = NSHostingView(rootView: breathDotView)
+        window.contentView = NSHostingView(rootView: breathingDotView)
         
         // Make the window movable by dragging anywhere on it
         window.isMovableByWindowBackground = true
@@ -116,6 +91,7 @@ class ViewBreathDotController: NSViewController {
         
         // First assign the window
         self.circleWindow = window
+        self.windowManager = WindowManager(window: window, owner: self, name: "BreathDot")
         
         // Then make it visible
         window.makeKeyAndOrderFront(nil)
@@ -127,27 +103,49 @@ class ViewBreathDotController: NSViewController {
     func moveToBottomRight() { 
         guard let screen = NSScreen.main, let window = circleWindow else { return }
         let screenRect = screen.frame
-        let x = screenRect.maxX - circleSize - 25
+        let x = screenRect.maxX - dotSize - 25
         let y = screenRect.minY + 25
         window.setFrameOrigin(NSPoint(x: x, y: y))
     }
     
+    // Update window size without recreating the view
     func updateWindowSize() {
         guard let window = circleWindow else { return }
         let newFrame = NSRect(
             x: window.frame.origin.x,
             y: window.frame.origin.y,
-            width: circleSize,
-            height: circleSize
+            width: dotSize,
+            height: dotSize
         )
         window.setFrame(newFrame, display: true, animate: true)
-        updateView()
     }
 }
 
-// Simple water level animation view
+// Visual representation of the breathing dot
+struct BreathingDotView: View {
+    @ObservedObject var state: BreathingDotState
+    let size: CGFloat
+    
+    var body: some View {
+        ZStack {
+            // Base circle
+            Circle()
+                .frame(width: size, height: size)
+                .foregroundColor(.black)
+            
+            // Animated water level indicator
+            WaterLevelView(breathingState: state.animationState)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        }
+        .opacity(state.isHovered ? 1.0 : 0.7)
+        .animation(.easeInOut(duration: 0.2), value: state.isHovered)
+    }
+}
+
+// Water level animation component
 struct WaterLevelView: View {
-    @StateObject private var breathingState = BreathingState()
+    @ObservedObject var breathingState: BreathingState
     
     var waterColor: Color {
         switch breathingState.currentPhase {
@@ -165,6 +163,7 @@ struct WaterLevelView: View {
                 .frame(width: geometry.size.width, height: geometry.size.height * breathingState.waterLevel)
                 .animation(.easeInOut(duration: 0.5), value: breathingState.waterLevel)
                 .onAppear {
+                    print("onAppear")
                     breathingState.startBreathingCycle()
                 }
         }

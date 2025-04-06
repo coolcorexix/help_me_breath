@@ -46,6 +46,7 @@ class BreathingStateForBreathInput: ObservableObject {
 
 class ViewBreathInputController: NSViewController, NSWindowDelegate {
     var inputWindow: NSWindow?
+    private var windowManager: WindowManager?
     private let breathingState = BreathingStateForBreathInput()
     private var keyMonitor: Any?
     private var animationTimer: Timer?
@@ -140,23 +141,58 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         
         let window = NSWindow(
             contentRect: screen.frame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .titled],
             backing: .buffered,
             defer: false
         )
         
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        window.hasShadow = false
-        window.level = .floating
         window.contentView = NSHostingView(rootView: breathInputView)
         window.delegate = self
         
         // Allow clicking through the blur to close
         window.ignoresMouseEvents = false
-        
         window.isReleasedWhenClosed = false
+        
         self.inputWindow = window
+        self.windowManager = WindowManager(window: window, owner: self, name: "BreathInput")
+    }
+    
+    @objc private func handleSpaceChange() {
+        print("Space change detected")
+        ensureWindowVisibility()
+    }
+    
+    @objc private func handleWindowMove() {
+        print("Window moved")
+        ensureWindowVisibility()
+    }
+    
+    @objc private func handleWindowVisibility() {
+        print("Window visibility changed")
+        ensureWindowVisibility()
+    }
+    
+    private func checkWindowVisibility() {
+        if let window = inputWindow {
+            print("Window isVisible: \(window.isVisible), isOnActiveSpace: \(window.isOnActiveSpace)")
+            if !window.isVisible || !window.isOnActiveSpace {
+                ensureWindowVisibility()
+            }
+        }
+    }
+    
+    private func ensureWindowVisibility() {
+        if let window = inputWindow {
+            print("Ensuring window visibility...")
+            window.orderFront(nil)
+            window.level = .statusBar
+            
+            // Make sure window is visible in the current space
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                window.orderFront(nil)
+                window.level = .statusBar
+            }
+        }
     }
     
     private func setupKeyMonitoring() {
@@ -198,6 +234,8 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         animationTimer?.invalidate()
         animationTimer = nil
         breathingState.stopInhaling()
+        windowManager?.cleanup()
+        windowManager = nil
         inputWindow = nil
     }
 } 
