@@ -7,6 +7,7 @@
 
 import Cocoa
 import SwiftUI
+import HotKey
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -15,11 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var window: NSWindow!
     private(set) var statusBarController: StatusBarController!
     private(set) var breathInputController: ViewBreathInputController?
-    private var globalKeyMonitor: Any?
+    private var hotKey: HotKey?
     private var localKeyMonitor: Any?
     
-
-
     static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory) // Set this before setting the delegate
@@ -55,12 +54,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Key Monitoring
     func setupKeyMonitoring() {
         print("Setup key monitoring")
-        // Monitor for F8 key press globally (when app is not active)
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            _ = self?.handleF8KeyPress(event)
+        hotKey = HotKey(key: .f8, modifiers: [.command])
+        
+        // Set the key down handler
+        hotKey?.keyDownHandler = { [weak self] in
+            print("F8 pressed globally")
+            self?.showBreathInput()
         }
         
-        // Monitor for F8 key press locally (when app is active)
+        // Keep local monitor for when app is active
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if self?.handleF8KeyPress(event) == true {
                 return nil // Consume the event
@@ -88,10 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
-        // Clean up monitors
-        if let monitor = globalKeyMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
+        // Clean up local monitor
         if let monitor = localKeyMonitor {
             NSEvent.removeMonitor(monitor)
         }

@@ -121,7 +121,10 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
             setupInputWindow()
         }
         
+        // Make window key and front most
         inputWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)  // This ensures our app becomes active
+        
         setupKeyMonitoring()
         setupAnimationTimer()
     }

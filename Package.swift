@@ -14,11 +14,13 @@ let package = Package(
             targets: ["help_me_breath"]
         )
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/soffes/HotKey", from: "0.2.1")
+    ],
     targets: [
         .executableTarget(
             name: "help_me_breath",
-            dependencies: [],
+            dependencies: ["HotKey"],
             path: "Sources/help_me_breath",
             resources: [
                 .copy("Resources/Assets.xcassets")
