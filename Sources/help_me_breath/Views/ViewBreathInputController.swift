@@ -5,9 +5,60 @@ import Cocoa
 class BreathingStateForBreathInput: ObservableObject {
     @Published var isInhaling = false
     @Published var inhalationStartTime: Date?
+    @Published var exhalationStartTime: Date?
     @Published var columnHeight: CGFloat = 0
     @Published var isDecreasing = false
+    @Published var isRecordingComplete = false
+
+    private var inhaleDurations: [TimeInterval] = [] {
+        didSet {
+            print("inhale durations: \(inhaleDurations)")
+        }
+    }
+    private var exhaleDurations: [TimeInterval] = [] {
+        didSet {
+            print("exhale durations: \(exhaleDurations)")
+        }
+    }
+
+    public var recordingCurrentIndex: Int = 0 {
+        didSet {
+            if recordingCurrentIndex >= 4 {
+                isRecordingComplete = true
+                updateBreathingPattern()
+            }
+            if !inhaleDurations.isEmpty {
+                print("Recording current index: \(recordingCurrentIndex)")
+            }
+        }
+    }
+
+    private func calculateAverages() -> (inhale: Double, exhale: Double) {
+        // Get last 3 durations
+        let lastThreeInhales = Array(inhaleDurations.suffix(3))
+        let lastThreeExhales = Array(exhaleDurations.suffix(3))
+        
+        // Calculate averages
+        let avgInhale = lastThreeInhales.reduce(0.0, +) / Double(lastThreeInhales.count)
+        let avgExhale = lastThreeExhales.reduce(0.0, +) / Double(lastThreeExhales.count)
+        
+        return (inhale: avgInhale, exhale: avgExhale)
+    }
     
+    private func updateBreathingPattern() {
+        let averages = calculateAverages()
+        let newPattern = BreathingPattern(
+            inhaleSeconds: averages.inhale,
+            inhaleHoldSeconds: 0,  // Keeping hold times at 0 for now
+            exhaleSeconds: averages.exhale,
+            exhaleHoldSeconds: 0
+        )
+        
+        // Update the breathing configuration
+        BreathingConfiguration.shared.updateCustomPattern(newPattern)
+        print("Updated breathing pattern - Inhale: \(averages.inhale)s, Exhale: \(averages.exhale)s")
+    }
+
     func startInhaling() {
         isInhaling = true
         isDecreasing = false
@@ -24,8 +75,27 @@ class BreathingStateForBreathInput: ObservableObject {
             let duration = Date().timeIntervalSince(startTime)
             print("Stopped inhaling. Duration: \(String(format: "%.2f", duration)) seconds")
             print("Starting decrease from height: \(columnHeight)")
+            inhaleDurations.append(duration)
         }
         inhalationStartTime = nil
+    }
+
+    func startExhaling() {
+        isInhaling = false
+        isDecreasing = true
+        exhalationStartTime = Date()
+        print("Started exhaling - Initial column height: \(columnHeight)")
+    }
+
+    func stopExhaling() {
+        isInhaling = false
+        isDecreasing = false
+        if let startTime = exhalationStartTime {
+            let duration = Date().timeIntervalSince(startTime)
+            print("Stopped exhaling. Duration: \(String(format: "%.2f", duration)) seconds")
+            exhaleDurations.append(duration)
+        }
+        exhalationStartTime = nil
     }
     
     func updateColumn() {
@@ -39,6 +109,7 @@ class BreathingStateForBreathInput: ObservableObject {
             print("Column decreasing: \(columnHeight)")
             if columnHeight == 0 {
                 isDecreasing = false
+                stopExhaling()
             }
         }
     }
@@ -47,9 +118,11 @@ class BreathingStateForBreathInput: ObservableObject {
 class ViewBreathInputController: NSViewController, NSWindowDelegate {
     var inputWindow: NSWindow?
     private var windowManager: WindowManager?
-    private let breathingState = BreathingStateForBreathInput()
+    private let breathingState: BreathingStateForBreathInput = BreathingStateForBreathInput()
     private var keyMonitor: Any?
     private var animationTimer: Timer?
+
+    
     
     var breathInputView: some View {
         BreathInputView(breathingState: breathingState)
@@ -67,17 +140,25 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                 
                 // Content
                 VStack(spacing: 20) {
-                    Text("Breath Input")
+                    Text("Record your breath")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(.white)
                         .padding()
                     
-                    // Breathing status text
-                    Text(breathingState.isInhaling ? "Inhaling..." : 
-                         breathingState.isDecreasing ? "Exhaling..." : "Press and hold SPACE to inhale")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.white)
-                        .padding()
+                    if breathingState.isRecordingComplete {
+                        Text("Recording complete! Your new breathing pattern will be based on the last three breath cycles.")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                    } else {
+                        // Breathing status text
+                        Text(breathingState.isInhaling ? "Inhaling..." : 
+                            breathingState.isDecreasing ? "Exhaling..." : "Press and hold SPACE to inhale")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundColor(.white)
+                            .padding()
+                    }
                     
                     // Column animation
                     ZStack(alignment: .bottom) {
@@ -93,7 +174,6 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .padding()
-                    .background(Color.red.opacity(0.3)) // Debug background
                     
                     if let startTime = breathingState.inhalationStartTime {
                         TimelineView(.animation(minimumInterval: 0.1)) { _ in
@@ -102,6 +182,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                                 .foregroundColor(.white)
                         }
                     }
+                    
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -121,10 +202,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
             setupInputWindow()
         }
         
-        // Make window key and front most
         inputWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)  // This ensures our app becomes active
-        
         setupKeyMonitoring()
         setupAnimationTimer()
     }
@@ -208,18 +286,25 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             if event.keyCode == 53 { // Esc key
                 self?.inputWindow?.close()
-                return nil
+                return event
             }
             
             if event.keyCode == 49 { // Space key
+                if (self?.breathingState.recordingCurrentIndex ?? 0 > 3) {
+                    return event
+                }
+
                 if event.type == .keyDown && !event.isARepeat {
+                    self?.breathingState.stopExhaling()
                     // Start inhaling on initial key down
                     self?.breathingState.startInhaling()
                 } else if event.type == .keyUp {
                     // Stop inhaling on key up
                     self?.breathingState.stopInhaling()
+                    self?.breathingState.startExhaling()
+                    self?.breathingState.recordingCurrentIndex += 1
                 }
-                return nil // Consume the event
+                return event
             }
             
             return event

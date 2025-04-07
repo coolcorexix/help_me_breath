@@ -36,6 +36,7 @@ public struct BreathingPattern {
 
 public class BreathingConfiguration: ObservableObject {
     @Published public var currentMode: BreathingMode = .casualWork
+    @Published public var customPattern: BreathingPattern?
     
     private var patterns: [BreathingMode: BreathingPattern] = [
         .casualWork: .casualWorkPattern,
@@ -43,7 +44,10 @@ public class BreathingConfiguration: ObservableObject {
     ]
     
     public var currentPattern: BreathingPattern {
-        patterns[currentMode] ?? .casualWorkPattern
+        if let custom = customPattern {
+            return custom
+        }
+        return patterns[currentMode] ?? .casualWorkPattern
     }
     
     public static let shared = BreathingConfiguration()
@@ -52,6 +56,11 @@ public class BreathingConfiguration: ObservableObject {
     
     public func switchMode(to mode: BreathingMode) {
         currentMode = mode
+        customPattern = nil  // Clear custom pattern when switching modes
+    }
+
+    public func updateCustomPattern(_ pattern: BreathingPattern) {
+        customPattern = pattern
     }
 }
 
