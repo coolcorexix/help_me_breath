@@ -9,6 +9,7 @@ class BreathingStateForBreathInput: ObservableObject {
     @Published var columnHeight: CGFloat = 0
     @Published var isDecreasing = false
     @Published var isRecordingComplete = false
+    @Published var saturation: Double = 0  // Add saturation state
 
     private var inhaleDurations: [TimeInterval] = [] {
         didSet {
@@ -100,14 +101,14 @@ class BreathingStateForBreathInput: ObservableObject {
     
     func updateColumn() {
         if isInhaling {
-            // Increase column height gradually
-            columnHeight = min(columnHeight + 2, 300)
-            print("Column height updated: \(columnHeight)")
-        } else if isDecreasing && columnHeight > 0 {
-            // Decrease column height gradually
-            columnHeight = max(columnHeight - 2, 0)
-            print("Column decreasing: \(columnHeight)")
-            if columnHeight == 0 {
+            // Increase saturation gradually
+            saturation = min(saturation + 2, 100)
+            print("Saturation increasing: \(saturation)")
+        } else if isDecreasing && saturation > 0 {
+            // Decrease saturation gradually
+            saturation = max(saturation - 2, 0)
+            print("Saturation decreasing: \(saturation)")
+            if saturation == 0 {
                 isDecreasing = false
                 stopExhaling()
             }
@@ -122,15 +123,34 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
     private var keyMonitor: Any?
     private var animationTimer: Timer?
 
+    private func cleanup() {
+        // Clean up
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+        animationTimer?.invalidate()
+        animationTimer = nil
+        breathingState.stopInhaling()
+        windowManager?.cleanup()
+        windowManager = nil
+        inputWindow = nil
+    }
     
+    private func handleClose() {
+        inputWindow?.close()  // This will trigger windowWillClose
+    }
     
     var breathInputView: some View {
-        BreathInputView(breathingState: breathingState)
+        BreathInputView(breathingState: breathingState) {
+            self.handleClose()
+        }
     }
     
     // Move the view to its own struct to properly handle state
     struct BreathInputView: View {
         @ObservedObject var breathingState: BreathingStateForBreathInput
+        var onClose: () -> Void  // Add close action
         
         var body: some View {
             ZStack {
@@ -140,10 +160,21 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                 
                 // Content
                 VStack(spacing: 20) {
+                    Spacer()
+                    
                     Text("Record your breath")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(.white)
                         .padding()
+                        .frame(height: 60)
+                    
+                    if !breathingState.isRecordingComplete {
+                        // Recording progress
+                        Text("\(min(breathingState.recordingCurrentIndex + 1, 4))/4")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(height: 40)
+                    }
                     
                     if breathingState.isRecordingComplete {
                         Text("Recording complete! Your new breathing pattern will be based on the last three breath cycles.")
@@ -151,6 +182,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
                             .padding()
+                            .frame(height: 100)
                     } else {
                         // Breathing status text
                         Text(breathingState.isInhaling ? "Inhaling..." : 
@@ -158,31 +190,49 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(.white)
                             .padding()
+                            .frame(height: 100)
                     }
                     
-                    // Column animation
-                    ZStack(alignment: .bottom) {
-                        // Column container
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.2))
-                            .frame(width: 60, height: 300)
-                        
-                        // Animated green column
-                        Rectangle()
-                            .foregroundColor(.green)
-                            .frame(width: 60, height: breathingState.columnHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .padding()
+                    // Circle with HSL animation
+                    Circle()
+                        .frame(width: 200, height: 200)
+                        .foregroundColor(Color(hue: 0.33,
+                                            saturation: breathingState.saturation / 100,
+                                            brightness: 0.5))
+                        .padding()
                     
-                    if let startTime = breathingState.inhalationStartTime {
-                        TimelineView(.animation(minimumInterval: 0.1)) { _ in
-                            Text(String(format: "%.1f seconds", Date().timeIntervalSince(startTime)))
-                                .font(.system(size: 20, weight: .light))
-                                .foregroundColor(.white)
+                    // Timer container with fixed height
+                    ZStack {
+                        if let startTime = breathingState.inhalationStartTime {
+                            TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                                Text(String(format: "%.1f seconds", Date().timeIntervalSince(startTime)))
+                                    .font(.system(size: 20, weight: .light))
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
+                    .frame(height: 40)
                     
+                    // Cancel button
+                    Button(action: onClose) {
+                        HStack(spacing: 8) {
+                            Text("Cancel")
+                            Text("(esc)")
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.2))
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .frame(height: 50)
+                    
+                    Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -203,6 +253,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         }
         
         inputWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)  // Force focus
         setupKeyMonitoring()
         setupAnimationTimer()
     }
@@ -222,10 +273,15 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         
         let window = NSWindow(
             contentRect: screen.frame,
-            styleMask: [.borderless, .titled],
+            styleMask: [.borderless],  // Remove .titled to prevent title bar
             backing: .buffered,
             defer: false
         )
+        
+        window.backgroundColor = .clear
+        window.isOpaque = true
+        window.level = .statusBar
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         
         window.contentView = NSHostingView(rootView: breathInputView)
         window.delegate = self
@@ -285,7 +341,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         // Monitor for both key down and key up events
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             if event.keyCode == 53 { // Esc key
-                self?.inputWindow?.close()
+                self?.handleClose()
                 return event
             }
             
@@ -300,9 +356,9 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                     self?.breathingState.startInhaling()
                 } else if event.type == .keyUp {
                     // Stop inhaling on key up
+                    self?.breathingState.recordingCurrentIndex += 1
                     self?.breathingState.stopInhaling()
                     self?.breathingState.startExhaling()
-                    self?.breathingState.recordingCurrentIndex += 1
                 }
                 return event
             }
@@ -314,16 +370,6 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     func windowWillClose(_ notification: Notification) {
-        // Clean up
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
-        animationTimer?.invalidate()
-        animationTimer = nil
-        breathingState.stopInhaling()
-        windowManager?.cleanup()
-        windowManager = nil
-        inputWindow = nil
+        cleanup()  // Only do cleanup here
     }
 } 
