@@ -46,8 +46,12 @@ class BreathingStateForBreathInput: ObservableObject {
         return (inhale: avgInhale, exhale: avgExhale)
     }
     
+    // Add property to store the final averages
+    private(set) var finalAverages: (inhale: Double, exhale: Double)?
+    
     private func updateBreathingPattern() {
         let averages = calculateAverages()
+        finalAverages = averages  // Store the final averages
         let newPattern = BreathingPattern(
             inhaleSeconds: averages.inhale,
             inhaleHoldSeconds: 0,  // Keeping hold times at 0 for now
@@ -108,11 +112,24 @@ class BreathingStateForBreathInput: ObservableObject {
             // Decrease saturation gradually
             saturation = max(saturation - 2, 0)
             print("Saturation decreasing: \(saturation)")
-            if saturation == 0 {
-                isDecreasing = false
-                stopExhaling()
-            }
+ 
         }
+    }
+
+    // Add reset function
+    func reset() {
+        isInhaling = false
+        inhalationStartTime = nil
+        exhalationStartTime = nil
+        columnHeight = 0
+        isDecreasing = false
+        isRecordingComplete = false
+        saturation = 0
+        inhaleDurations = []
+        exhaleDurations = []
+        recordingCurrentIndex = 0
+        finalAverages = nil  // Reset the final averages
+        print("Breathing state reset")
     }
 }
 
@@ -177,16 +194,29 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                     }
                     
                     if breathingState.isRecordingComplete {
-                        Text("Recording complete! Your new breathing pattern will be based on the last three breath cycles.")
-                            .font(.system(size: 24, weight: .light))
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                            .frame(height: 100)
+                        VStack(spacing: 10) {
+                            Text("Recording complete!")
+                                .font(.system(size: 24, weight: .light))
+                                .foregroundColor(.white)
+                            if let averages = breathingState.finalAverages {
+                                Text("Your new breathing pattern:")
+                                    .font(.system(size: 20, weight: .light))
+                                    .foregroundColor(.white)
+                                Text("Inhale: \(String(format: "%.1f", averages.inhale)) seconds")
+                                    .font(.system(size: 20, weight: .light))
+                                    .foregroundColor(.white)
+                                Text("Exhale: \(String(format: "%.1f", averages.exhale)) seconds")
+                                    .font(.system(size: 20, weight: .light))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .frame(height: 100)
                     } else {
                         // Breathing status text
                         Text(breathingState.isInhaling ? "Inhaling..." : 
-                            breathingState.isDecreasing ? "Exhaling..." : "Press and hold SPACE to inhale")
+                            breathingState.isDecreasing ? "Exhaling..." : "Press and hold SPACE to inhale. You should close your eyes")
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(.white)
                             .padding()
@@ -203,11 +233,19 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                     
                     // Timer container with fixed height
                     ZStack {
-                        if let startTime = breathingState.inhalationStartTime {
-                            TimelineView(.animation(minimumInterval: 0.1)) { _ in
-                                Text(String(format: "%.1f seconds", Date().timeIntervalSince(startTime)))
-                                    .font(.system(size: 20, weight: .light))
-                                    .foregroundColor(.white)
+                        if !breathingState.isRecordingComplete {
+                            if let startTime = breathingState.inhalationStartTime {
+                                TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                                    Text(String(format: "%.1f seconds", Date().timeIntervalSince(startTime)))
+                                        .font(.system(size: 20, weight: .light))
+                                        .foregroundColor(.white)
+                                }
+                            } else if let startTime = breathingState.exhalationStartTime {
+                                TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                                    Text(String(format: "%.1f seconds", Date().timeIntervalSince(startTime)))
+                                        .font(.system(size: 20, weight: .light))
+                                        .foregroundColor(.white)
+                                }
                             }
                         }
                     }
@@ -251,6 +289,9 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
         if inputWindow == nil {
             setupInputWindow()
         }
+        
+        // Reset breathing state when window is shown
+        breathingState.reset()
         
         inputWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)  // Force focus
@@ -360,7 +401,7 @@ class ViewBreathInputController: NSViewController, NSWindowDelegate {
                     self?.breathingState.stopInhaling()
                     self?.breathingState.startExhaling()
                 }
-                return event
+                return nil // Prevent the system sound by not propagating the space key event
             }
             
             return event

@@ -52,15 +52,47 @@ public class BreathingConfiguration: ObservableObject {
     
     public static let shared = BreathingConfiguration()
     
-    private init() {}
-    
-    public func switchMode(to mode: BreathingMode) {
-        currentMode = mode
-        customPattern = nil  // Clear custom pattern when switching modes
+    private init() {
+        // Load saved custom pattern if exists
+        if let savedPattern = loadSavedPattern() {
+            customPattern = savedPattern
+        }
     }
 
     public func updateCustomPattern(_ pattern: BreathingPattern) {
         customPattern = pattern
+        // Save the pattern
+        savePattern(pattern)
+    }
+
+    private func savePattern(_ pattern: BreathingPattern) {
+        let patternData = [
+            "inhaleSeconds": pattern.inhaleSeconds,
+            "inhaleHoldSeconds": pattern.inhaleHoldSeconds,
+            "exhaleSeconds": pattern.exhaleSeconds,
+            "exhaleHoldSeconds": pattern.exhaleHoldSeconds
+        ]
+        UserDefaults.standard.set(patternData, forKey: "CustomBreathingPattern")
+    }
+
+    private func loadSavedPattern() -> BreathingPattern? {
+        guard let patternData = UserDefaults.standard.dictionary(forKey: "CustomBreathingPattern") else {
+            return nil
+        }
+
+        guard let inhaleSeconds = patternData["inhaleSeconds"] as? Double,
+              let inhaleHoldSeconds = patternData["inhaleHoldSeconds"] as? Double,
+              let exhaleSeconds = patternData["exhaleSeconds"] as? Double,
+              let exhaleHoldSeconds = patternData["exhaleHoldSeconds"] as? Double else {
+            return nil
+        }
+
+        return BreathingPattern(
+            inhaleSeconds: inhaleSeconds,
+            inhaleHoldSeconds: inhaleHoldSeconds,
+            exhaleSeconds: exhaleSeconds,
+            exhaleHoldSeconds: exhaleHoldSeconds
+        )
     }
 }
 
@@ -83,6 +115,6 @@ extension BreathingConfiguration {
     
     // Method to apply a predefined template
     public func applyTemplate(_ mode: BreathingMode) {
-        switchMode(to: mode)
+        currentMode = mode
     }
 } 
